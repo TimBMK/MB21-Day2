@@ -40,18 +40,20 @@ The vaccination data is here: https://www.dropbox.com/s/5jy18d1thntcc5t/COVID-19
 
 ```{r}
 
+
 ```
 
 ## Packages
 
 ```{r}
 library(tidyverse)
+library(lubridate)
 ```
 
 ## Read three data files
 
 ```{r}
-data_vac <- read_csv("tmp/COVID-19_Vaccinations_in_the_United_States_County.csv.tar.gz")
+data_vac <- read_csv("/home/rstudio/ECPR/MB21-Day1/tmp/COVID-19_Vaccinations_in_the_United_States_County.csv.tar.gz")
 data_demo <- read_csv("data/acs2017_county_data.csv")
 data_pres <- read_csv("data/pres20results.csv")
 ```
@@ -63,6 +65,9 @@ data_pres <- read_csv("data/pres20results.csv")
 
 
 ```{r}
+data_vac %>% head()
+data_demo %>% head()
+data_pres %>% head()
 
 ```
 - renaming is necessary for `data_demo`
@@ -70,7 +75,10 @@ data_pres <- read_csv("data/pres20results.csv")
 
 
 ```{r}
-
+data_demo <- data_demo %>% rename(FIPS = CountyId)
+data_pres <- data_pres %>% rename(FIPS = fips)
+data_vac <- data_vac %>% mutate(FIPS = as.integer(FIPS))
+data_vac <- data_vac %>% mutate(Date = mdy(Date))
 ```
 
 
@@ -88,6 +96,13 @@ data_pres <- read_csv("data/pres20results.csv")
 - Do they match? (if not does this seem problematic)?
     
 ```{r}
+data_demo %>% distinct(FIPS) %>% nrow()
+
+data_demo %>% anti_join(data_vac , by = "FIPS")
+
+data_demo %>% distinct(FIPS) %>% anti_join(data_pres %>% distinct(FIPS), by = "FIPS")
+
+data_demo %>% anti_join(data_pres, by = "FIPS")
 
 ```
 
@@ -98,7 +113,7 @@ data_pres <- read_csv("data/pres20results.csv")
 - From covid dataset, get the latest figures for each county
 
 ```{r}
-
+data_vac_latest <- data_vac %>% slice_max(Date)
 ```
 
 
@@ -108,7 +123,9 @@ presidential votes
   - Keep only trump vote rows
 
 ```{r}
-
+df_trump <- data_pres %>% 
+  mutate(vote_pct = votes/total_votes) %>% 
+  filter(candidate == "Donald Trump")
 ```
 
 ## Merge the datasets
@@ -123,6 +140,10 @@ presidential votes
   
 ```{r}
 
+data_merged <- data_vac_latest %>% 
+  left_join(data_demo %>% select(- "County"), by = "FIPS") %>% 
+  left_join(df_trump %>% select(-c(state, county)), by = "FIPS")
+
 ```
 
 ## Using the merged datasets 
@@ -133,6 +154,18 @@ presidential votes
 - `GGally::ggpairs()`, correlation plot (I showed in day 4 lecture)
 
 ```{r}
+
+data_merged %>% 
+  select(Series_Complete_Pop_Pct, Booster_Doses_18Plus_Vax_Pct, vote_pct, Hispanic, Black, IncomePerCap, Unemployment) %>% 
+  cor(use = "complete.obs")
+
+data_merged %>% 
+  select(Series_Complete_Pop_Pct, Booster_Doses_18Plus_Vax_Pct, vote_pct, Hispanic, Black, IncomePerCap, Unemployment) %>% 
+  pairs()
+
+data_merged %>% 
+  select(Series_Complete_Pop_Pct, Booster_Doses_18Plus_Vax_Pct, vote_pct, Hispanic, Black, IncomePerCap, Unemployment) %>% 
+  GGally::ggpairs()
 
 ```
 ## Monthy-by-month correlations between Trump Vote and caccination takeup.
@@ -166,7 +199,9 @@ What we need to do is:
 - Convert dates to character
 
 ```{r}
-
+data_demo <- data_demo %>% select(!c(State, County))
+df_trump <- df_trump %>% select(-c(party, state, candidate, county))
+data_vac <- data_vac %>% mutate(Date = as.character(Date)) # SQLite does not have the (R) Date Format!
 ```
 
 
@@ -182,7 +217,11 @@ db <- dbConnect(RSQLite::SQLite(), "~/covid.sqlite")
 ### Create/populate tables
 
 ```{r}
+dbWriteTable(conn = db, name = "demo", value = data_demo)
+dbWriteTable(conn = db, name = "trump", value = df_trump)
+dbWriteTable(conn = db, name = "vac", value = data_vac)
 
+dbGetQuery(db, "select * from demo limit 5")
 ```
 
 ### Disconnect

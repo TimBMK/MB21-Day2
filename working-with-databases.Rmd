@@ -30,6 +30,11 @@ db <- dbConnect(RSQLite::SQLite(), "~/covid.sqlite")
   - Run SQL queries there
 
 ```{r}
+dbListTables(db)
+
+dbGetQuery(db, "SELECT * FROM demo LIMIT 5")
+dbGetQuery(db, "select * from trump limit 5")
+dbGetQuery(db, "select * from vac limit 5")
 
 ```
 
@@ -40,6 +45,9 @@ db <- dbConnect(RSQLite::SQLite(), "~/covid.sqlite")
 2. Get the data on 1 Aug, 2021, and select county with less than 10 pct vaccination
 
 ```{r}
+dbGetQuery(db, "SELECT *, MAX(Date) FROM vac GROUP BY Recip_County")
+
+dbGetQuery(db, "SELECT Recip_County  FROM vac WHERE Date = '2021-08-01' AND Completeness_pct < 0.1") # matter of arguments (SELECT - FROM - WHERE) matters!
 
 ```
 #### Ordering and aggregation
@@ -49,7 +57,9 @@ db <- dbConnect(RSQLite::SQLite(), "~/covid.sqlite")
 
 
 ```{r}
+dbGetQuery(db, "SELECT Recip_County, Date, Completeness_pct FROM vac WHERE Date = '2021-08-14' ORDER BY Completeness_pct DESC")
 
+dbGetQuery(db, "SELECT Recip_State, SUM(Series_Complete_Yes) FROM vac GROUP BY Recip_State")
 ```
 
 
@@ -59,6 +69,9 @@ db <- dbConnect(RSQLite::SQLite(), "~/covid.sqlite")
 - (advanced) calculate per 1000 cases and deaths
 
 ```{r}
+dbGetQuery(db, "SELECT vac.* FROM vac LEFT JOIN demo ON vac.FIPS = demo.FIPS")
+
+dbGetQuery(db, "SELECT *, Series_Complete_Yes/Census2019 FROM vac") # necessary vars are missing, but this is how calculations work
 
 ```
 
@@ -69,7 +82,10 @@ Now we will use `dbplyr`
 ### Get the object for each table
 
 ```{r}
-
+library(dbplyr)
+data_vac <- tbl(db, from = "vac")
+data_demo <- tbl(db, from = "demo")
+data_trump <- tbl(db, from = "trump")
 ```
 
 
@@ -83,7 +99,9 @@ Now we will use `dbplyr`
   - Run SQL queries there
 
 ```{r}
-
+data_vac %>% head()
+data_demo %>% head()
+data_pres %>% head()
 ```
 
 
@@ -93,7 +111,8 @@ Now we will use `dbplyr`
 2. Get the data on 14 Aug, 2021, and select county with more than 10 percent vaccination rate
 
 ```{r}
-
+data_vac %>% slice_max(Date)
+data_vac %>% filter(Date == "2021-08-14", Completeness_pct > 10) %>% select(Recip_County)
 ```
 #### Ordering and aggregation
 
@@ -102,6 +121,9 @@ Now we will use `dbplyr`
 
 
 ```{r}
+data_vac %>% arrange(desc(Completeness_pct))
+
+data_vac %>% group_by(Recip_State) %>% summarise(vaccination = mean(Completeness_pct))
 
 ```
 
@@ -114,5 +136,8 @@ Now we will use `dbplyr`
 
 
 ```{r}
+data_vac %>% inner_join(data_demo, by = "FIPS")
+
+data_vac %>% select(Series_Complete_Yes, Census2019, Series_Complete_Pop_Pct) %>% mutate(vacc_rate = Series_Complete_Yes/Census2019)
 
 ```
